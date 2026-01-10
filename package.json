@@ -1,0 +1,30 @@
+{
+  "name": "afy-backend",
+  "version": "1.0.0",
+  "description": "Agent For You - Backend API Service",
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "api/index.js",
+  "scripts": {
+    "dev": "ts-node src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "vercel-build": "tsc",
+    "vercel-dev": "vercel dev"
+  },
+  "engines": {
+    "node": ">=18.x"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.0.6",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
