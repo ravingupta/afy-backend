@@ -87,23 +87,32 @@ npx prisma studio    # Open database GUI
 - `SUPABASE_URL` - Supabase project URL
 - `SUPABASE_SERVICE_ROLE_KEY` - Supabase service role key (for auth verification)
 - `JWT_SECRET` - Secret for signing access tokens (min 32 chars)
-- `JWT_REFRESH_SECRET` - Secret for signing refresh tokens (min 32 chars)
 
 Environment files load order: `.env.local` first, then `.env` as fallback.
 
 ## Authentication Flow
 
+The auth system embeds Supabase tokens in our JWT and verifies with Supabase on every request for real-time revocation.
+
 1. Client authenticates with Supabase (email/password, OAuth, etc.)
 2. Client sends Supabase access token to `POST /auth/login`
 3. Backend verifies token with Supabase, creates/finds user in DB
-4. Backend returns JWT access token (15min) + refresh token (7 days)
-5. Client uses access token in `Authorization: Bearer <token>` header
-6. Client refreshes tokens via `POST /auth/refresh` when access token expires
+4. Backend returns JWT (1 hour expiry) containing embedded Supabase token
+5. Client uses JWT in `Authorization: Bearer <token>` header
+6. On each request, middleware verifies both JWT and Supabase token
+7. If Supabase token is revoked/expired, request is rejected
+
+**Benefits:**
+- Real-time session revocation (logout from Supabase = instant invalidation)
+- Single source of truth (Supabase)
+- No refresh token complexity
+
+**Trade-offs:**
+- Supabase API call on every authenticated request (~50-100ms latency)
 
 ### Auth Endpoints
 
-- `POST /auth/login` - Exchange Supabase token for session tokens
-- `POST /auth/refresh` - Refresh access token using refresh token
+- `POST /auth/login` - Exchange Supabase token for JWT
 - `POST /auth/logout` - Logout (protected)
 - `GET /auth/me` - Get current user info (protected)
 

@@ -33,6 +33,83 @@ export interface VerifiedSupabaseUser {
 /**
  * Verify a Supabase access token and return user data
  */
+export interface CreateUserResult {
+  user: VerifiedSupabaseUser;
+  accessToken: string;
+}
+
+export interface CreateUserError {
+  code: 'USER_EXISTS' | 'WEAK_PASSWORD' | 'INVALID_EMAIL' | 'UNKNOWN';
+  message: string;
+}
+
+/**
+ * Create a new user in Supabase using Admin API
+ */
+export const createSupabaseUser = async (
+  email: string,
+  password: string
+): Promise<{ success: true; data: CreateUserResult } | { success: false; error: CreateUserError }> => {
+  try {
+    const client = getSupabaseClient();
+
+    // Create user with Admin API
+    const { data, error } = await client.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true // Auto-confirm email for backend signup
+    });
+
+    if (error) {
+      // Handle specific Supabase errors
+      if (error.message.includes('already been registered')) {
+        return { success: false, error: { code: 'USER_EXISTS', message: 'User already exists with this email' } };
+      }
+      if (error.message.includes('password')) {
+        return { success: false, error: { code: 'WEAK_PASSWORD', message: 'Password must be at least 6 characters' } };
+      }
+      if (error.message.includes('email')) {
+        return { success: false, error: { code: 'INVALID_EMAIL', message: 'Invalid email address' } };
+      }
+      return { success: false, error: { code: 'UNKNOWN', message: error.message } };
+    }
+
+    if (!data.user) {
+      return { success: false, error: { code: 'UNKNOWN', message: 'Failed to create user' } };
+    }
+
+    // Sign in to get a session token for the new user
+    const { data: signInData, error: signInError } = await client.auth.signInWithPassword({
+      email,
+      password
+    });
+
+    if (signInError || !signInData.session) {
+      return { success: false, error: { code: 'UNKNOWN', message: 'User created but failed to generate session' } };
+    }
+
+    return {
+      success: true,
+      data: {
+        user: {
+          id: data.user.id,
+          email: data.user.email || '',
+          phone: data.user.phone,
+          emailConfirmedAt: data.user.email_confirmed_at,
+          lastSignInAt: data.user.last_sign_in_at
+        },
+        accessToken: signInData.session.access_token
+      }
+    };
+  } catch (error) {
+    console.error('Create Supabase user error:', error);
+    return { success: false, error: { code: 'UNKNOWN', message: 'Failed to create user' } };
+  }
+};
+
+/**
+ * Verify a Supabase access token and return user data
+ */
 export const verifySupabaseToken = async (token: string): Promise<VerifiedSupabaseUser | null> => {
   try {
     const client = getSupabaseClient();

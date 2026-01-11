@@ -1,15 +1,11 @@
 import { Request, Response } from 'express';
-import { verifySupabaseToken } from '../services/supabase.service';
-import {
-  generateTokenPair,
-  generateSessionId,
-  verifyRefreshToken
-} from '../services/jwt.service';
+import { verifySupabaseToken, createSupabaseUser } from '../services/supabase.service';
+import { generateAccessToken } from '../services/jwt.service';
 import { UserModel, User } from '../models';
 import { AuthenticatedRequest } from '../middleware/auth';
 
 /**
- * Exchange Supabase token for our session tokens
+ * Exchange Supabase token for our access token
  * POST /auth/login
  */
 export const login = async (req: Request, res: Response): Promise<void> => {
@@ -43,13 +39,12 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       });
     }
 
-    // Generate session tokens
-    const sessionId = generateSessionId();
-    const tokens = generateTokenPair({
+    // Generate access token with embedded Supabase token
+    const tokenResponse = generateAccessToken({
       userId: user.id,
       email: user.email,
       supabaseId: supabaseUser.id,
-      sessionId
+      supabaseToken: supabaseToken
     });
 
     res.json({
@@ -58,7 +53,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         email: user.email,
         name: user.name
       },
-      ...tokens
+      ...tokenResponse
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -67,61 +62,12 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 };
 
 /**
- * Refresh access token using refresh token
- * POST /auth/refresh
- */
-export const refresh = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { refreshToken } = req.body;
-
-    if (!refreshToken) {
-      res.status(400).json({ error: 'refreshToken is required' });
-      return;
-    }
-
-    // Verify refresh token
-    const decoded = verifyRefreshToken(refreshToken);
-
-    if (!decoded) {
-      res.status(401).json({ error: 'Invalid or expired refresh token' });
-      return;
-    }
-
-    // Get user from database
-    const user = await UserModel.findUnique({
-      where: { id: decoded.userId }
-    });
-
-    if (!user) {
-      res.status(401).json({ error: 'User not found' });
-      return;
-    }
-
-    // Generate new token pair with same session ID
-    const tokens = generateTokenPair({
-      userId: user.id,
-      email: user.email,
-      supabaseId: '', // We don't store this, but it's in the session
-      sessionId: decoded.sessionId
-    });
-
-    res.json(tokens);
-  } catch (error) {
-    console.error('Refresh error:', error);
-    res.status(500).json({ error: 'Token refresh failed' });
-  }
-};
-
-/**
- * Logout - invalidate session (client should discard tokens)
+ * Logout - client should discard tokens
  * POST /auth/logout
  */
-export const logout = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-  // In a production app, you might want to:
-  // - Add the token to a blacklist
-  // - Store sessions in DB and invalidate them
-  // - Use Redis for session management
-
+export const logout = async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
+  // Client should discard the token
+  // Supabase token revocation happens on Supabase side
   res.json({ message: 'Logged out successfully' });
 };
 
@@ -154,5 +100,57 @@ export const me = async (req: AuthenticatedRequest, res: Response): Promise<void
   } catch (error) {
     console.error('Get user error:', error);
     res.status(500).json({ error: 'Failed to get user info' });
+  }
+};
+
+/**
+ * Create a new user account
+ * POST /auth/signup
+ */
+export const signup = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email, password, name } = req.body;
+
+    if (!email || !password) {
+      res.status(400).json({ error: 'Email and password are required' });
+      return;
+    }
+
+    // Create user in Supabase
+    const result = await createSupabaseUser(email, password);
+
+    if (!result.success) {
+      const statusCode = result.error.code === 'USER_EXISTS' ? 409 : 400;
+      res.status(statusCode).json({ error: result.error.message });
+      return;
+    }
+
+    // Create user in our database
+    const user = await UserModel.create({
+      data: {
+        email: result.data.user.email,
+        name: name || null
+      }
+    });
+
+    // Generate access token with embedded Supabase token
+    const tokenResponse = generateAccessToken({
+      userId: user.id,
+      email: user.email,
+      supabaseId: result.data.user.id,
+      supabaseToken: result.data.accessToken
+    });
+
+    res.status(201).json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name
+      },
+      ...tokenResponse
+    });
+  } catch (error) {
+    console.error('Signup error:', error);
+    res.status(500).json({ error: 'Signup failed' });
   }
 };
