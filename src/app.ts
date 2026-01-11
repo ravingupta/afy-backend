@@ -3,6 +3,7 @@ import cors from 'cors';
 import { requestLogger } from './middleware/requestLogger';
 import { notFound, errorHandler } from './middleware/errorHandler';
 import indexRouter from './routes/index.router';
+import authRouter from './routes/auth.router';
 
 const app = express();
 
@@ -37,6 +38,7 @@ app.use(requestLogger);
 
 // Routes
 app.use('/', indexRouter);
+app.use('/auth', authRouter);
 
 // Error handling (must be after routes)
 app.use(notFound);
