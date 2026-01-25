@@ -10,6 +10,7 @@ const app = express();
 // CORS configuration
 const allowedOrigins = [
   'http://localhost:3000',
+  'http://localhost:3001',
   'http://localhost:5173',
   'https://www.agentforyou.ca',
   'https://agentforyou.ca'

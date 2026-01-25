@@ -33,9 +33,12 @@ export interface VerifiedSupabaseUser {
 /**
  * Verify a Supabase access token and return user data
  */
-export interface CreateUserResult {
-  user: VerifiedSupabaseUser;
-  accessToken: string;
+export interface SignupUserResult {
+  user: {
+    id: string;
+    email: string;
+  };
+  emailSent: boolean;
 }
 
 export interface CreateUserError {
@@ -44,25 +47,24 @@ export interface CreateUserError {
 }
 
 /**
- * Create a new user in Supabase using Admin API
+ * Sign up a new user in Supabase - sends verification email
  */
-export const createSupabaseUser = async (
+export const signupSupabaseUser = async (
   email: string,
   password: string
-): Promise<{ success: true; data: CreateUserResult } | { success: false; error: CreateUserError }> => {
+): Promise<{ success: true; data: SignupUserResult } | { success: false; error: CreateUserError }> => {
   try {
     const client = getSupabaseClient();
 
-    // Create user with Admin API
-    const { data, error } = await client.auth.admin.createUser({
+    // Use signUp instead of admin.createUser to trigger verification email
+    const { data, error } = await client.auth.signUp({
       email,
-      password,
-      email_confirm: true // Auto-confirm email for backend signup
+      password
     });
 
     if (error) {
-      // Handle specific Supabase errors
-      if (error.message.includes('already been registered')) {
+      console.error('Supabase signUp error:', error.message, error);
+      if (error.message.includes('already been registered') || error.message.includes('already registered')) {
         return { success: false, error: { code: 'USER_EXISTS', message: 'User already exists with this email' } };
       }
       if (error.message.includes('password')) {
@@ -78,14 +80,9 @@ export const createSupabaseUser = async (
       return { success: false, error: { code: 'UNKNOWN', message: 'Failed to create user' } };
     }
 
-    // Sign in to get a session token for the new user
-    const { data: signInData, error: signInError } = await client.auth.signInWithPassword({
-      email,
-      password
-    });
-
-    if (signInError || !signInData.session) {
-      return { success: false, error: { code: 'UNKNOWN', message: 'User created but failed to generate session' } };
+    // Check if user already exists (Supabase returns user without error but with identities = [])
+    if (data.user.identities && data.user.identities.length === 0) {
+      return { success: false, error: { code: 'USER_EXISTS', message: 'User already exists with this email' } };
     }
 
     return {
@@ -93,16 +90,13 @@ export const createSupabaseUser = async (
       data: {
         user: {
           id: data.user.id,
-          email: data.user.email || '',
-          phone: data.user.phone,
-          emailConfirmedAt: data.user.email_confirmed_at,
-          lastSignInAt: data.user.last_sign_in_at
+          email: data.user.email || ''
         },
-        accessToken: signInData.session.access_token
+        emailSent: true
       }
     };
   } catch (error) {
-    console.error('Create Supabase user error:', error);
+    console.error('Signup Supabase user error:', error);
     return { success: false, error: { code: 'UNKNOWN', message: 'Failed to create user' } };
   }
 };

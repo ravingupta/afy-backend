@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { verifySupabaseToken, createSupabaseUser } from '../services/supabase.service';
+import { verifySupabaseToken, signupSupabaseUser } from '../services/supabase.service';
 import { generateAccessToken } from '../services/jwt.service';
 import { UserModel, User } from '../models';
 import { AuthenticatedRequest } from '../middleware/auth';
@@ -104,7 +104,7 @@ export const me = async (req: AuthenticatedRequest, res: Response): Promise<void
 };
 
 /**
- * Create a new user account
+ * Create a new user account - sends verification email
  * POST /auth/signup
  */
 export const signup = async (req: Request, res: Response): Promise<void> => {
@@ -116,8 +116,8 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Create user in Supabase
-    const result = await createSupabaseUser(email, password);
+    // Create user in Supabase (sends verification email)
+    const result = await signupSupabaseUser(email, password);
 
     if (!result.success) {
       const statusCode = result.error.code === 'USER_EXISTS' ? 409 : 400;
@@ -125,7 +125,7 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Create user in our database
+    // Create user in our database (unverified for now)
     const user = await UserModel.create({
       data: {
         email: result.data.user.email,
@@ -133,21 +133,13 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
       }
     });
 
-    // Generate access token with embedded Supabase token
-    const tokenResponse = generateAccessToken({
-      userId: user.id,
-      email: user.email,
-      supabaseId: result.data.user.id,
-      supabaseToken: result.data.accessToken
-    });
-
     res.status(201).json({
+      message: 'Verification email sent. Please check your inbox to verify your account.',
       user: {
         id: user.id,
         email: user.email,
         name: user.name
-      },
-      ...tokenResponse
+      }
     });
   } catch (error) {
     console.error('Signup error:', error);
