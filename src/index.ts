@@ -6,8 +6,10 @@ dotenv.config();
 
 import app from './app';
 
-const port = process.env.PORT || 3000;
+const port = parseInt(process.env.PORT || '3001', 10);
 
 app.listen(port, () => {
-  console.log(`Agent For You API running on http://localhost:${port}`);
+  console.log(`\n🚀 Agent For You API Server`);
+  console.log(`   Local:   http://localhost:${port}`);
+  console.log(`   Mode:    ${process.env.NODE_ENV || 'development'}\n`);
 });
